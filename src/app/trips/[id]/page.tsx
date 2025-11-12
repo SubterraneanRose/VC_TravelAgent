@@ -5,6 +5,7 @@ import { Card, Typography, Spin, message, Button, Space, Descriptions, Tag, Time
 import Link from 'next/link';
 import dayjs from 'dayjs';
 import { supabase } from '../../../lib/supabase/client';
+import AmapView from '../../../components/AmapView';
 
 interface Trip {
   id: string;
@@ -31,6 +32,8 @@ interface PlanItem {
   type: string;
   name: string;
   address: string | null;
+  lat: number | null;
+  lng: number | null;
   notes: string | null;
   cost_est: number | null;
 }
@@ -294,9 +297,10 @@ export default function TripDetailPage() {
                 {plan.items.length === 0 ? (
                   <Typography.Text type="secondary">暂无安排</Typography.Text>
                 ) : (
-                  <Timeline>
-                    {plan.items.map((item) => (
-                      <Timeline.Item key={item.id}>
+                  <Timeline
+                    items={plan.items.map((item) => ({
+                      key: item.id,
+                      children: (
                         <Space direction="vertical" size={4} style={{ width: '100%' }}>
                           <Space>
                             <Tag color={
@@ -329,15 +333,70 @@ export default function TripDetailPage() {
                             </Typography.Text>
                           )}
                         </Space>
-                      </Timeline.Item>
-                    ))}
-                  </Timeline>
+                      ),
+                    }))}
+                  />
                 )}
               </Card>
             ))}
           </Space>
         )}
       </Card>
+
+      {/* 地图视图 */}
+      {dayPlans.length > 0 && (() => {
+        // 将 plan_items 转换为地图标记点
+        const mapMarkers = dayPlans.flatMap(plan => 
+          plan.items
+            .filter(item => item.address || (item.lat != null && item.lng != null))
+            .map(item => {
+              // 处理坐标：可能是数字或字符串
+              let lat: number | null = null;
+              let lng: number | null = null;
+              
+              if (item.lat != null) {
+                lat = typeof item.lat === 'string' ? parseFloat(item.lat) : Number(item.lat);
+                if (isNaN(lat)) lat = null;
+              }
+              
+              if (item.lng != null) {
+                lng = typeof item.lng === 'string' ? parseFloat(item.lng) : Number(item.lng);
+                if (isNaN(lng)) lng = null;
+              }
+              
+              return {
+                id: item.id,
+                name: item.name,
+                address: item.address,
+                lat,
+                lng,
+                type: item.type as 'spot' | 'food' | 'hotel' | 'transport',
+                dayIndex: plan.day_index,
+              };
+            })
+        );
+
+        console.log('准备传递给地图的标记点:', {
+          totalItems: dayPlans.reduce((sum, p) => sum + p.items.length, 0),
+          mapMarkersCount: mapMarkers.length,
+          markers: mapMarkers.map(m => ({
+            name: m.name,
+            hasLat: !!m.lat,
+            hasLng: !!m.lng,
+            hasAddress: !!m.address,
+          })),
+        });
+
+        return mapMarkers.length > 0 ? (
+          <AmapView markers={mapMarkers} height={500} />
+        ) : (
+          <Card>
+            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+              暂无可显示在地图上的地点（需要地址或坐标）
+            </div>
+          </Card>
+        );
+      })()}
 
       <Card title="费用记录">
         <Typography.Text type="secondary">
