@@ -1,9 +1,13 @@
 "use client";
 import { useState } from 'react';
-import { Form, Input, InputNumber, Select, DatePicker, Button, Card, Typography, Space, message, Alert } from 'antd';
+import { Form, Input, InputNumber, Select, DatePicker, Button, Card, Typography, Space, message, Alert, Divider } from 'antd';
 import { useRouter } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
 import { supabase } from '../../lib/supabase/client';
+import VoiceInput from '../../components/VoiceInput';
+
+// 标记为动态渲染，避免构建时预渲染
+export const dynamic = 'force-dynamic';
 
 const { RangePicker } = DatePicker;
 
@@ -42,6 +46,7 @@ const PREFERENCE_OPTIONS = [
 export default function NewTripPage() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [parsingVoice, setParsingVoice] = useState(false);
   const router = useRouter();
 
   const onFinish = async (values: Record<string, any>) => {
@@ -86,6 +91,64 @@ export default function NewTripPage() {
     }
   };
 
+  /**
+   * 处理语音识别结果
+   * 使用 LLM 解析语音输入的自然语言，提取结构化信息
+   */
+  const handleVoiceResult = async (text: string) => {
+    if (!text || text.trim().length === 0) {
+      return;
+    }
+
+    try {
+      setParsingVoice(true);
+      message.loading({ content: '正在解析语音输入...', key: 'parsing' });
+
+      // 调用 LLM 解析语音输入
+      const response = await fetch('/api/parse-voice-input', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '解析失败');
+      }
+
+      // 填充表单
+      if (result.data) {
+        const data = result.data;
+        
+        // 更新表单字段
+        const formValues: Record<string, any> = {};
+        
+        if (data.origin) formValues.origin = data.origin;
+        if (data.destination) formValues.destination = data.destination;
+        if (data.destinationEnd) formValues.destinationEnd = data.destinationEnd;
+        if (data.people) formValues.people = data.people;
+        if (data.budget) formValues.budget = data.budget;
+        if (data.preferences && data.preferences.length > 0) {
+          formValues.preferences = data.preferences;
+        }
+        if (data.startDate && data.endDate) {
+          formValues.dateRange = [dayjs(data.startDate), dayjs(data.endDate)];
+        }
+
+        form.setFieldsValue(formValues);
+        message.success({ content: '语音输入已解析并填充表单', key: 'parsing' });
+      } else {
+        message.warning({ content: '未能从语音输入中提取有效信息，请手动填写', key: 'parsing' });
+      }
+    } catch (err: any) {
+      console.error('解析语音输入失败:', err);
+      message.error({ content: '解析失败: ' + (err.message || '未知错误'), key: 'parsing' });
+    } finally {
+      setParsingVoice(false);
+    }
+  };
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Typography.Title level={3}>新建行程</Typography.Title>
@@ -108,6 +171,49 @@ export default function NewTripPage() {
           budget: 10000,
           preferences: ['美食'],
         }}>
+          {/* 语音输入 */}
+          <Card size="small" style={{ marginBottom: 16, background: '#f5f5f5' }}>
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Typography.Text strong>语音输入（可选）</Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                点击"开始语音输入"，说出您的旅行需求，系统会自动识别并填充表单。例如："我想去日本东京，5天，预算1万元，喜欢美食和动漫，带孩子"
+              </Typography.Text>
+              <Alert
+                message="语音输入使用说明"
+                description={
+                  <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <strong>浏览器要求：</strong>请使用 Chrome、Edge 或 Safari 浏览器
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <strong>网络要求：</strong>需要 HTTPS 连接（本地开发环境 localhost 不受限制）
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12, color: '#ff4d4f' }}>
+                      <strong>⚠️ 可能存在的问题：</strong>
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 11, marginLeft: 16 }}>
+                      • 无法连接到语音识别服务（Chrome 使用 Google 服务，可能需要科学上网）<br/>
+                      • 防火墙或代理可能阻止连接<br/>
+                      • 网络不稳定可能导致识别失败<br/>
+                      • 如果语音识别不可用，请使用"手动输入"功能直接输入文本
+                    </Typography.Text>
+                  </Space>
+                }
+                type="info"
+                showIcon
+                style={{ marginTop: 8 }}
+              />
+              <VoiceInput
+                onResult={handleVoiceResult}
+                onError={(error) => {
+                  // 错误已在 VoiceInput 组件中处理
+                }}
+              />
+            </Space>
+          </Card>
+
+          <Divider>或手动填写</Divider>
+
           <Form.Item 
             label="出发地/起点" 
             name="origin" 

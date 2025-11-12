@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # 从 .env 文件或环境变量中读取配置
+      # 注意：生产环境应该使用 secrets 或环境变量文件
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-aliyun-bailian}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - NEXT_PUBLIC_AMAP_API_KEY=${NEXT_PUBLIC_AMAP_API_KEY:-}
+      - NEXT_PUBLIC_AMAP_WEB_SERVICE_KEY=${NEXT_PUBLIC_AMAP_WEB_SERVICE_KEY:-}
+      - NEXT_PUBLIC_MAP_PROVIDER=${NEXT_PUBLIC_MAP_PROVIDER:-amap}
+      - NEXT_PUBLIC_SPEECH_PROVIDER=${NEXT_PUBLIC_SPEECH_PROVIDER:-xfyun}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+

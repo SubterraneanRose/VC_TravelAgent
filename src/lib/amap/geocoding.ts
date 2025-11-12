@@ -74,8 +74,8 @@ function extractRouteCity(address: string): string | null {
     return dashMatch[1];
   }
   
-  return null;
-}
+    return null;
+  }
 
 /**
  * 清理和规范化地址字符串
@@ -241,8 +241,8 @@ async function geocodeSingle(address: string, apiKey: string, retryCount = 0): P
   if (!response.ok) {
     return null;
   }
-  
-  const data = await response.json();
+    
+    const data = await response.json();
   
   // 处理 API 限流错误（错误码 10021 - 超过并发量限制：3 次/秒）
   if (data.infocode === '10021' || data.info?.includes('CUQPS_HAS_EXCEEDED_THE_LIMIT')) {
@@ -258,16 +258,16 @@ async function geocodeSingle(address: string, apiKey: string, retryCount = 0): P
       return null;
     }
   }
-  
-  if (data.status === '1' && data.geocodes && data.geocodes.length > 0) {
-    const location = data.geocodes[0].location.split(',');
-    return {
-      lng: parseFloat(location[0]),
-      lat: parseFloat(location[1]),
-    };
-  }
-  
-  return null;
+    
+    if (data.status === '1' && data.geocodes && data.geocodes.length > 0) {
+      const location = data.geocodes[0].location.split(',');
+      return {
+        lng: parseFloat(location[0]),
+        lat: parseFloat(location[1]),
+      };
+    }
+    
+    return null;
 }
 
 /**

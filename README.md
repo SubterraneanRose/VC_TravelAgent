@@ -1,5 +1,5 @@
 # VC_TravelAgent
-
+Github链接：https://github.com/SubterraneanRose/VC_TravelAgent/tree/main
 基于 Next.js + TypeScript + Ant Design 的 Web 版 AI 旅行规划师。
 
 ## 功能特性
@@ -225,10 +225,99 @@ A: 请参考各服务商的官方文档：
 - 高德地图: https://lbs.amap.com/
 - 阿里云百炼: https://bailian.console.aliyun.com/
 
+## Docker 部署
+
+项目支持 Docker 容器化部署，详细说明请参考 [Docker 部署指南](./DOCKER.md)。
+
+### 获取 Docker 镜像
+
+#### 方式 1: 从镜像仓库拉取（如果已推送）
+
+如果镜像已推送到镜像仓库，可以直接拉取：
+
+```bash
+# 从阿里云容器镜像服务拉取（示例）
+docker pull registry.cn-hangzhou.aliyuncs.com/你的命名空间/vc-travel-agent:latest
+
+# 或从 Docker Hub 拉取（示例）
+docker pull 你的用户名/vc-travel-agent:latest
+```
+
+**注意**：目前镜像尚未推送到公共仓库，需要先构建。
+
+#### 方式 2: 使用导出的镜像文件（推荐，快速开始）
+
+如果提供了预构建的镜像文件，可以从 GitHub Releases 下载：
+
+1. **下载镜像文件**
+   - 访问 [GitHub Releases](https://github.com/SubterraneanRose/VC_TravelAgent/releases)
+   - 下载 `vc-travel-agent-latest.tar` 文件
+
+2. **加载镜像**
+   ```bash
+   # 加载镜像（无需解压，直接使用 .tar 文件）
+   docker load -i vc-travel-agent-latest.tar
+   
+   # 验证镜像已加载
+   docker images | grep vc-travel-agent
+   ```
+
+3. **运行容器**
+   ```bash
+   # 确保已配置 .env.local 文件（参考"快速开始"部分）
+   docker run -d -p 3000:3000 --env-file .env.local vc-travel-agent:latest
+   ```
+
+**注意**：镜像文件大小约 48MB，请确保有足够的磁盘空间。
+
+#### 方式 3: 本地构建镜像（推荐）
+
+```bash
+# 使用构建脚本（推荐）
+# Linux/Mac:
+chmod +x build-docker.sh && ./build-docker.sh
+
+# Windows:
+build-docker.bat
+
+# 或直接使用 Docker 命令
+docker build -t vc-travel-agent:latest .
+```
+
+### 运行容器
+
+构建完成后，运行容器：
+
+```bash
+# 方式 1: 使用 docker run
+docker run -d \
+  --name vc-travel-agent \
+  -p 3000:3000 \
+  -e NEXT_PUBLIC_SUPABASE_URL=你的Supabase项目URL \
+  -e NEXT_PUBLIC_SUPABASE_ANON_KEY=你的Supabase anon key \
+  -e LLM_API_KEY=你的LLM API Key \
+  -e NEXT_PUBLIC_AMAP_API_KEY=你的高德地图API Key \
+  vc-travel-agent:latest
+```
+
+```bash
+# 方式 2: 使用 docker-compose（推荐）
+# 1. 配置环境变量
+cp env.example .env
+# 编辑 .env 文件，填写所有必需的环境变量
+
+# 2. 启动服务
+docker-compose up -d
+
+# 3. 查看日志
+docker-compose logs -f
+```
+
 ## 相关文档
 
 - [产品需求文档](./PRD.md)
 - [Supabase 设置说明](./supabase/README.md)
+- [Docker 部署指南](./DOCKER.md)
 - [景点价格查询机制](./docs/ATTRACTION_PRICE_QUERY.md)
 - [价格 API 集成计划](./docs/PRICE_API_INTEGRATION.md)
 - [LLM Web 搜索分析](./docs/LLM_WEB_SEARCH_ANALYSIS.md)

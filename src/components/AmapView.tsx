@@ -198,8 +198,8 @@ export default function AmapView({
               // 只记录调试信息
               if (process.env.NODE_ENV === 'development') {
                 console.debug('地理编码失败（可能是外国城市或模糊地址）:', marker.name, marker.address);
-              }
-            }
+        }
+      }
           } catch (error: any) {
             console.error('地理编码异常:', marker.name, marker.address, error.message);
           }
@@ -262,10 +262,10 @@ export default function AmapView({
           map.setZoom(15);
         } else {
           // 多个标记点，使用边界框
-          const bounds = new window.AMap.Bounds(
+        const bounds = new window.AMap.Bounds(
             new window.AMap.LngLat(Math.min(...lngs), Math.min(...lats)),
             new window.AMap.LngLat(Math.max(...lngs), Math.max(...lats))
-          );
+        );
           
           // 添加一些边距
           map.setBounds(bounds, false, [20, 20, 20, 20]);

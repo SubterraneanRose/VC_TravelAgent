@@ -5,6 +5,9 @@ import { DeleteOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabase/client';
 
+// 标记为动态渲染，避免构建时预渲染
+export const dynamic = 'force-dynamic';
+
 interface Trip {
   id: string;
   title: string;

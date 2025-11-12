@@ -1,12 +1,15 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, Typography, Spin, message, Button, Space, Descriptions, Tag, Timeline, Empty, Popconfirm, Alert } from 'antd';
-import { DeleteOutlined } from '@ant-design/icons';
+import { Card, Typography, Spin, message, Button, Space, Descriptions, Tag, Timeline, Empty, Popconfirm, Alert, Table, Form, Input, InputNumber, Select, DatePicker, Modal, Statistic, Row, Col } from 'antd';
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import Link from 'next/link';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 import { supabase } from '../../../lib/supabase/client';
 import AmapView from '../../../components/AmapView';
+
+// 标记为动态渲染，避免构建时预渲染
+export const dynamic = 'force-dynamic';
 
 interface Trip {
   id: string;
@@ -42,6 +45,16 @@ interface PlanItem {
   cost_est: number | null;
 }
 
+interface Expense {
+  id: string;
+  trip_id: string;
+  date: string;
+  category: '机酒' | '交通' | '餐饮' | '门票' | '杂项';
+  amount: number;
+  note: string | null;
+  created_at: string;
+}
+
 export default function TripDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -50,11 +63,16 @@ export default function TripDetailPage() {
   const [loading, setLoading] = useState(true);
   const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expenseModalVisible, setExpenseModalVisible] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [expenseForm] = Form.useForm();
 
   useEffect(() => {
     if (tripId) {
       loadTrip();
       loadDayPlans();
+      loadExpenses();
     }
   }, [tripId]);
 
@@ -107,6 +125,22 @@ export default function TripDetailPage() {
       }
     } catch (err: any) {
       console.error('加载每日计划失败:', err);
+    }
+  };
+
+  const loadExpenses = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setExpenses(data || []);
+    } catch (err: any) {
+      console.error('加载费用记录失败:', err);
     }
   };
 
@@ -257,6 +291,69 @@ export default function TripDetailPage() {
     } catch (err: any) {
       console.error('删除行程失败:', err);
       message.error('删除行程失败: ' + (err.message || '未知错误'));
+    }
+  };
+
+  const handleSaveExpense = async () => {
+    if (!trip) return;
+
+    try {
+      const values = await expenseForm.validateFields();
+      const expenseData = {
+        trip_id: trip.id,
+        date: (values.date as Dayjs).format('YYYY-MM-DD'),
+        category: values.category,
+        amount: values.amount,
+        note: values.note || null,
+      };
+
+      if (editingExpense) {
+        // 更新
+        const { error } = await supabase
+          .from('expenses')
+          .update(expenseData)
+          .eq('id', editingExpense.id);
+
+        if (error) throw error;
+        message.success('费用记录已更新');
+      } else {
+        // 新增
+        const { error } = await supabase
+          .from('expenses')
+          .insert(expenseData);
+
+        if (error) throw error;
+        message.success('费用记录已添加');
+      }
+
+      setExpenseModalVisible(false);
+      setEditingExpense(null);
+      expenseForm.resetFields();
+      await loadExpenses(); // 重新加载费用列表
+    } catch (err: any) {
+      console.error('保存费用记录失败:', err);
+      if (err.errorFields) {
+        // 表单验证错误
+        return;
+      }
+      message.error('保存失败: ' + (err.message || '未知错误'));
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', expenseId);
+
+      if (error) throw error;
+
+      message.success('费用记录已删除');
+      await loadExpenses(); // 重新加载费用列表
+    } catch (err: any) {
+      console.error('删除费用记录失败:', err);
+      message.error('删除失败: ' + (err.message || '未知错误'));
     }
   };
 
@@ -478,10 +575,272 @@ export default function TripDetailPage() {
         );
       })()}
 
-      <Card title="费用记录">
-        <Typography.Text type="secondary">
-          费用记录功能开发中，敬请期待...
-        </Typography.Text>
+      {/* 费用记录 */}
+      <Card 
+        title="费用记录"
+        extra={
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingExpense(null);
+              expenseForm.resetFields();
+              expenseForm.setFieldsValue({
+                date: dayjs(),
+                category: '餐饮',
+              });
+              setExpenseModalVisible(true);
+            }}
+          >
+            添加费用
+          </Button>
+        }
+      >
+        {/* 预算对比统计 */}
+        {trip && trip.budget && (
+          <Row gutter={16} style={{ marginBottom: 24 }}>
+            <Col span={8}>
+              <Statistic
+                title="总预算"
+                value={trip.budget}
+                prefix="¥"
+                valueStyle={{ color: '#3f8600' }}
+              />
+            </Col>
+            <Col span={8}>
+              <Statistic
+                title="已记录费用"
+                value={expenses.reduce((sum, e) => sum + Number(e.amount), 0)}
+                prefix="¥"
+                valueStyle={{ 
+                  color: expenses.reduce((sum, e) => sum + Number(e.amount), 0) > (trip.budget || 0) 
+                    ? '#cf1322' 
+                    : '#1890ff' 
+                }}
+              />
+            </Col>
+            <Col span={8}>
+              <Statistic
+                title="剩余预算"
+                value={Math.max(0, (trip.budget || 0) - expenses.reduce((sum, e) => sum + Number(e.amount), 0))}
+                prefix="¥"
+                valueStyle={{ 
+                  color: (trip.budget || 0) - expenses.reduce((sum, e) => sum + Number(e.amount), 0) < 0
+                    ? '#cf1322'
+                    : '#3f8600'
+                }}
+              />
+            </Col>
+          </Row>
+        )}
+
+        {/* 费用分类统计 */}
+        {expenses.length > 0 && (
+          <div style={{ marginBottom: 24, padding: 16, background: '#f5f5f5', borderRadius: 4 }}>
+            <Typography.Text strong style={{ marginRight: 16 }}>费用分类统计：</Typography.Text>
+            <Space wrap>
+              {(['机酒', '交通', '餐饮', '门票', '杂项'] as const).map(category => {
+                const categoryTotal = expenses
+                  .filter(e => e.category === category)
+                  .reduce((sum, e) => sum + Number(e.amount), 0);
+                if (categoryTotal === 0) return null;
+                return (
+                  <Tag key={category} color="blue">
+                    {category}: ¥{categoryTotal.toFixed(2)}
+                  </Tag>
+                );
+              })}
+            </Space>
+          </div>
+        )}
+
+        {/* 费用列表 */}
+        {expenses.length === 0 ? (
+          <Empty 
+            description="暂无费用记录"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          >
+            <Button 
+              type="primary" 
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingExpense(null);
+                expenseForm.resetFields();
+                expenseForm.setFieldsValue({
+                  date: dayjs(),
+                  category: '餐饮',
+                });
+                setExpenseModalVisible(true);
+              }}
+            >
+              添加第一条费用记录
+            </Button>
+          </Empty>
+        ) : (
+          <Table
+            dataSource={expenses}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+            columns={[
+              {
+                title: '日期',
+                dataIndex: 'date',
+                key: 'date',
+                width: 120,
+                render: (date: string) => dayjs(date).format('YYYY-MM-DD'),
+              },
+              {
+                title: '分类',
+                dataIndex: 'category',
+                key: 'category',
+                width: 100,
+                render: (category: string) => {
+                  const colors: Record<string, string> = {
+                    '机酒': 'red',
+                    '交通': 'blue',
+                    '餐饮': 'orange',
+                    '门票': 'green',
+                    '杂项': 'purple',
+                  };
+                  return <Tag color={colors[category] || 'default'}>{category}</Tag>;
+                },
+              },
+              {
+                title: '金额',
+                dataIndex: 'amount',
+                key: 'amount',
+                width: 120,
+                align: 'right',
+                render: (amount: number) => `¥${Number(amount).toFixed(2)}`,
+              },
+              {
+                title: '备注',
+                dataIndex: 'note',
+                key: 'note',
+                ellipsis: true,
+              },
+              {
+                title: '操作',
+                key: 'action',
+                width: 120,
+                render: (_: any, record: Expense) => (
+                  <Space>
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => {
+                        setEditingExpense(record);
+                        expenseForm.setFieldsValue({
+                          date: dayjs(record.date),
+                          category: record.category,
+                          amount: record.amount,
+                          note: record.note || '',
+                        });
+                        setExpenseModalVisible(true);
+                      }}
+                    >
+                      编辑
+                    </Button>
+                    <Popconfirm
+                      title="确定要删除这条费用记录吗？"
+                      onConfirm={() => handleDeleteExpense(record.id)}
+                      okText="确定"
+                      cancelText="取消"
+                      okType="danger"
+                    >
+                      <Button
+                        type="link"
+                        danger
+                        size="small"
+                        icon={<DeleteOutlined />}
+                      >
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        )}
+
+        {/* 添加/编辑费用记录弹窗 */}
+        <Modal
+          title={editingExpense ? '编辑费用记录' : '添加费用记录'}
+          open={expenseModalVisible}
+          onOk={handleSaveExpense}
+          onCancel={() => {
+            setExpenseModalVisible(false);
+            setEditingExpense(null);
+            expenseForm.resetFields();
+          }}
+          okText="保存"
+          cancelText="取消"
+        >
+          <Form
+            form={expenseForm}
+            layout="vertical"
+            initialValues={{
+              date: dayjs(),
+              category: '餐饮',
+              amount: 0,
+            }}
+          >
+            <Form.Item
+              label="日期"
+              name="date"
+              rules={[{ required: true, message: '请选择日期' }]}
+            >
+              <DatePicker style={{ width: '100%' }} />
+            </Form.Item>
+            
+            <Form.Item
+              label="分类"
+              name="category"
+              rules={[{ required: true, message: '请选择分类' }]}
+            >
+              <Select
+                options={[
+                  { label: '机酒', value: '机酒' },
+                  { label: '交通', value: '交通' },
+                  { label: '餐饮', value: '餐饮' },
+                  { label: '门票', value: '门票' },
+                  { label: '杂项', value: '杂项' },
+                ]}
+              />
+            </Form.Item>
+            
+            <Form.Item
+              label="金额（元）"
+              name="amount"
+              rules={[
+                { required: true, message: '请输入金额' },
+                { type: 'number', min: 0.01, message: '金额必须大于0' },
+              ]}
+            >
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0.01}
+                step={0.01}
+                precision={2}
+                placeholder="请输入金额"
+              />
+            </Form.Item>
+            
+            <Form.Item
+              label="备注"
+              name="note"
+            >
+              <Input.TextArea
+                rows={3}
+                placeholder="可选，添加费用说明"
+                maxLength={200}
+                showCount
+              />
+            </Form.Item>
+          </Form>
+        </Modal>
       </Card>
     </Space>
   );
