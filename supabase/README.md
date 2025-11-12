@@ -18,17 +18,34 @@
 
 ## 3. 执行数据库迁移
 
+**重要**：请按顺序执行所有迁移文件，不要跳过任何文件。
+
+### 迁移文件列表
+
+1. **001_initial_schema.sql** - 初始表结构
+   - 创建 `trips` 表（行程主表）
+   - 创建 `day_plans` 表（每日计划）
+   - 创建 `plan_items` 表（计划项：景点/餐饮/住宿/交通）
+   - 创建 `expenses` 表（费用记录）
+   - 创建索引和 RLS 策略
+
+2. **002_add_origin_destination.sql** - 添加起点和终点字段
+   - 在 `trips` 表中添加 `origin` 字段（出发地/起点）
+   - 在 `trips` 表中添加 `destination_end` 字段（终点）
+
+3. **003_add_people_field.sql** - 添加人数字段
+   - 在 `trips` 表中添加 `people` 字段（同行人数，默认 2）
+
+### 执行步骤
+
 1. 在 Supabase 控制台，点击左侧菜单 "SQL Editor"
 2. 点击 "New query"
-3. 复制 `supabase/migrations/001_initial_schema.sql` 的全部内容
-4. 粘贴到 SQL Editor 中
-5. 点击 "Run" 执行 SQL
-
-这将创建以下表：
-- `trips` - 行程主表
-- `day_plans` - 每日计划
-- `plan_items` - 计划项（景点/餐饮/住宿/交通）
-- `expenses` - 费用记录
+3. 依次执行每个迁移文件：
+   - 复制迁移文件的全部内容
+   - 粘贴到 SQL Editor 中
+   - 点击 "Run" 执行 SQL
+   - 确认执行成功（显示 "Success"）
+4. 重复步骤 3，直到所有迁移文件都执行完成
 
 ## 4. 配置 RLS（行级安全）
 

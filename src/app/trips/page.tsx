@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { List, Card, Typography, Empty, Button, Spin, message } from 'antd';
+import { List, Card, Typography, Empty, Button, Spin, message, Popconfirm } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabase/client';
 
@@ -39,6 +40,23 @@ export default function TripsPage() {
     }
   };
 
+  const handleDelete = async (tripId: string, tripTitle: string) => {
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .delete()
+        .eq('id', tripId);
+
+      if (error) throw error;
+
+      message.success(`行程"${tripTitle}"已删除`);
+      loadTrips(); // 重新加载列表
+    } catch (err: any) {
+      console.error('删除行程失败:', err);
+      message.error('删除行程失败: ' + (err.message || '未知错误'));
+    }
+  };
+
   if (loading) {
     return <Spin size="large" style={{ display: 'block', textAlign: 'center', marginTop: 50 }} />;
   }
@@ -56,7 +74,27 @@ export default function TripsPage() {
             <Card 
               title={trip.title} 
               extra={trip.destination}
-              actions={[<Link key="view" href={`/trips/${trip.id}`}>查看详情</Link>]}
+              actions={[
+                <Link key="view" href={`/trips/${trip.id}`}>查看详情</Link>,
+                <Popconfirm
+                  key="delete"
+                  title="确定要删除这个行程吗？"
+                  description="删除后将无法恢复，包括所有相关的行程计划和费用记录。"
+                  onConfirm={() => handleDelete(trip.id, trip.title)}
+                  okText="确定"
+                  cancelText="取消"
+                  okType="danger"
+                >
+                  <Button 
+                    type="text" 
+                    danger 
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    删除
+                  </Button>
+                </Popconfirm>
+              ]}
             >
               <Typography.Text type="secondary">
                 {trip.start_date} 至 {trip.end_date}

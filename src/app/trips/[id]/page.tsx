@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, Typography, Spin, message, Button, Space, Descriptions, Tag, Timeline, Empty } from 'antd';
+import { Card, Typography, Spin, message, Button, Space, Descriptions, Tag, Timeline, Empty, Popconfirm, Alert } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import dayjs from 'dayjs';
 import { supabase } from '../../../lib/supabase/client';
@@ -11,11 +12,14 @@ interface Trip {
   id: string;
   title: string;
   destination: string;
+  origin: string | null;
+  destination_end: string | null;
   start_date: string;
   end_date: string;
   days: number;
   budget: number | null;
   preferences: string[];
+  people: number | null;
   created_at: string;
 }
 
@@ -142,18 +146,21 @@ export default function TripDetailPage() {
         console.warn('删除 day_plans 时出错:', deleteError);
       }
 
-      const response = await fetch('/api/generate-itinerary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          destination: trip.destination,
-          startDate: trip.start_date,
-          endDate: trip.end_date,
-          days: trip.days,
-          budget: trip.budget,
-          preferences: trip.preferences || [],
-        }),
-      });
+          const response = await fetch('/api/generate-itinerary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              destination: trip.destination,
+              origin: trip.origin || null,
+              destinationEnd: trip.destination_end || null,
+              startDate: trip.start_date,
+              endDate: trip.end_date,
+              days: trip.days,
+              budget: trip.budget,
+              preferences: trip.preferences || [],
+              people: trip.people || 2,
+            }),
+          });
 
       const result = await response.json();
 
@@ -234,11 +241,46 @@ export default function TripDetailPage() {
     );
   }
 
+  const handleDelete = async () => {
+    if (!trip) return;
+
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .delete()
+        .eq('id', trip.id);
+
+      if (error) throw error;
+
+      message.success(`行程"${trip.title}"已删除`);
+      router.push('/trips'); // 删除后跳转到列表页
+    } catch (err: any) {
+      console.error('删除行程失败:', err);
+      message.error('删除行程失败: ' + (err.message || '未知错误'));
+    }
+  };
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Button onClick={() => router.push('/trips')}>
-        ← 返回行程列表
-      </Button>
+      <Space>
+        <Button onClick={() => router.push('/trips')}>
+          ← 返回行程列表
+        </Button>
+        {trip && (
+          <Popconfirm
+            title="确定要删除这个行程吗？"
+            description="删除后将无法恢复，包括所有相关的行程计划、费用记录和地图标记。"
+            onConfirm={handleDelete}
+            okText="确定"
+            cancelText="取消"
+            okType="danger"
+          >
+            <Button danger icon={<DeleteOutlined />}>
+              删除行程
+            </Button>
+          </Popconfirm>
+        )}
+      </Space>
 
       <Card>
         <Typography.Title level={2}>{trip.title}</Typography.Title>
@@ -246,6 +288,7 @@ export default function TripDetailPage() {
         <Descriptions bordered column={2} style={{ marginTop: 24 }}>
           <Descriptions.Item label="目的地">{trip.destination}</Descriptions.Item>
           <Descriptions.Item label="行程天数">{trip.days} 天</Descriptions.Item>
+          <Descriptions.Item label="同行人数">{trip.people || 2} 人</Descriptions.Item>
           <Descriptions.Item label="出发日期">{trip.start_date}</Descriptions.Item>
           <Descriptions.Item label="结束日期">{trip.end_date}</Descriptions.Item>
           {trip.budget && (
@@ -281,6 +324,14 @@ export default function TripDetailPage() {
           </Button>
         }
       >
+        {dayPlans.length > 0 && (
+          <div style={{ marginBottom: 16, padding: 12, background: '#f0f2f5', borderRadius: 4 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              💡 提示：所有费用均为估算价格，实际价格可能因时间、季节、预订渠道等因素而有所不同。
+              特别是航班和酒店价格波动较大，建议在实际预订前查询实时价格。
+            </Typography.Text>
+          </div>
+        )}
         {dayPlans.length === 0 ? (
           <Empty 
             description="暂无行程计划"
@@ -319,7 +370,12 @@ export default function TripDetailPage() {
                               <Typography.Text type="secondary">({item.time_range})</Typography.Text>
                             )}
                             {item.cost_est && (
-                              <Typography.Text type="secondary">¥{item.cost_est}</Typography.Text>
+                              <Typography.Text type="secondary">
+                                ¥{item.cost_est}
+                                <Typography.Text type="secondary" style={{ fontSize: 10, marginLeft: 4 }}>
+                                  (估算)
+                                </Typography.Text>
+                              </Typography.Text>
                             )}
                           </Space>
                           {item.address && (
@@ -345,6 +401,17 @@ export default function TripDetailPage() {
 
       {/* 地图视图 */}
       {dayPlans.length > 0 && (() => {
+        // 检测目的地是否是外国城市
+        const isForeignDestination = trip.destination && (
+          trip.destination.includes('日本') || 
+          trip.destination.includes('俄罗斯') || 
+          trip.destination.includes('美国') || 
+          trip.destination.includes('欧洲') ||
+          trip.destination.includes('韩国') ||
+          trip.destination.includes('泰国') ||
+          trip.destination.includes('新加坡')
+        );
+        
         // 将 plan_items 转换为地图标记点
         const mapMarkers = dayPlans.flatMap(plan => 
           plan.items
@@ -387,14 +454,27 @@ export default function TripDetailPage() {
           })),
         });
 
-        return mapMarkers.length > 0 ? (
-          <AmapView markers={mapMarkers} height={500} />
-        ) : (
-          <Card>
-            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-              暂无可显示在地图上的地点（需要地址或坐标）
-            </div>
-          </Card>
+        return (
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            {isForeignDestination && (
+              <Alert
+                message="地图提示"
+                description="高德地图主要支持中国境内地址的地理编码，外国城市的地点可能无法在地图上显示标记点。"
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
+            {mapMarkers.length > 0 ? (
+              <AmapView markers={mapMarkers} height={500} />
+            ) : (
+              <Card>
+                <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+                  暂无可显示在地图上的地点（需要地址或坐标）
+                </div>
+              </Card>
+            )}
+          </Space>
         );
       })()}
 

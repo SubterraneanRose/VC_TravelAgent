@@ -1,32 +1,61 @@
+export interface AttractionPriceInfo {
+  name: string;
+  price: number | null;
+  isFree: boolean;
+  source?: string;
+}
+
 export interface TripGenerationParams {
   destination: string;
+  origin?: string | null;
+  destinationEnd?: string | null;
   startDate: string;
   endDate: string;
   days: number;
   budget: number | null;
   preferences: string[];
   people?: number;
+  attractionPrices?: AttractionPriceInfo[]; // 景点价格信息（来自搜索或LLM查询）
 }
 
 export function buildItineraryPrompt(params: TripGenerationParams): string {
-  const { destination, startDate, endDate, days, budget, preferences, people = 2 } = params;
+  const { destination, origin, destinationEnd, startDate, endDate, days, budget, preferences, people = 2, attractionPrices } = params;
   
   const preferencesText = preferences.length > 0 
     ? preferences.join('、')
     : '无特殊偏好';
 
   const budgetText = budget ? `预算约 ¥${budget.toLocaleString()}` : '预算不限';
+  
+  const originText = origin ? `- 出发地/起点：${origin}` : '';
+  const destinationEndText = destinationEnd ? `- 终点：${destinationEnd}` : '';
+
+  // 构建景点价格信息文本
+  let attractionPriceText = '';
+  if (attractionPrices && attractionPrices.length > 0) {
+    attractionPriceText = '\n\n**景点门票价格参考（来自实际查询）：**\n';
+    attractionPrices.forEach(attr => {
+      if (attr.isFree) {
+        attractionPriceText += `- ${attr.name}：免费\n`;
+      } else if (attr.price !== null) {
+        attractionPriceText += `- ${attr.name}：¥${attr.price}/人${attr.source ? `（${attr.source}）` : ''}\n`;
+      } else {
+        attractionPriceText += `- ${attr.name}：价格未查询到\n`;
+      }
+    });
+    attractionPriceText += '\n**重要：请严格按照以上价格信息设置景点的 costEst，免费景点必须为 0 或 null，收费景点使用查询到的价格。**\n';
+  }
 
   return `你是一位专业的旅行规划师。请为以下旅行需求生成详细的行程计划。
 
 **旅行信息：**
-- 目的地：${destination}
-- 出发日期：${startDate}
+${originText ? originText + '\n' : ''}- 目的地：${destination}
+${destinationEndText ? destinationEndText + '\n' : ''}- 出发日期：${startDate}
 - 结束日期：${endDate}
 - 行程天数：${days} 天
 - 同行人数：${people} 人
 - 旅行偏好：${preferencesText}
-- ${budgetText}
+- ${budgetText}${attractionPriceText}
 
 **要求：**
 1. 生成 ${days} 天的详细行程，每天包含：
@@ -34,12 +63,71 @@ export function buildItineraryPrompt(params: TripGenerationParams): string {
    - 推荐的景点（包含名称、地址、预计游览时间）
    - 推荐的餐厅（包含名称、地址、菜系类型）
    - 住宿建议（如果涉及多城市）
-   - 交通方式建议
+   - 交通方式建议（${origin ? `从 ${origin} 出发，` : ''}${destinationEnd ? `最终返回 ${destinationEnd}` : '往返交通'}）
    - 每个项目的预估费用
 
-2. 行程要符合以下偏好：${preferencesText}
-3. ${budget ? `总预算控制在 ¥${budget.toLocaleString()} 以内，合理分配各项费用` : '费用合理即可'}
-4. 考虑 ${people} 人出行的实际情况
+2. **时间分配要求（重要，必须严格遵守）：**
+   - **时间段（timeRange）必须准确反映实际活动耗时，不能随意分配或缩短**
+   - **计算规则：时间段结束时间 - 开始时间 = 实际耗时**
+   
+   - **长途交通（如国际航班、长途火车）的时间段必须覆盖完整耗时：**
+     * 国际航班：如果飞行时间约 9 小时，时间段应该是 07:00-16:00（9小时），不能是 07:00-13:00（只有6小时）
+     * 国际航班：如果飞行时间约 13 小时，时间段应该是 09:00-22:00（13小时）
+     * 长途火车：如果车程 5 小时，时间段应该是 08:00-13:00（5小时），不能是 08:00-10:00（只有2小时）
+     * 短途交通（如市内地铁、出租车）通常 30 分钟-2 小时
+   
+   - **景点游览时间要合理：**
+     * 一般景点：2-4 小时（如：09:00-12:00 表示 3 小时）
+     * 大型博物馆：3-6 小时（如：10:00-15:00 表示 5 小时）
+     * 简单景点：1-2 小时（如：14:00-15:30 表示 1.5 小时）
+   
+   - **餐饮时间通常 1-2 小时：**
+     * 早餐：07:00-08:00（1小时）
+     * 午餐：12:00-13:30（1.5小时）
+     * 晚餐：18:00-20:00（2小时）
+   
+   - **住宿时间段必须合理：**
+     * 住宿时间段应该表示入住和退房时间，通常是晚上到第二天早上
+     * **正确格式：20:00-次日08:00 或 21:00-次日09:00**（表示晚上入住，第二天早上退房）
+     * **错误格式：14:00-20:00**（这不是住宿时间段，住宿不会只有6小时）
+     * 如果备注说明"预计飞行时间约X小时"，时间段必须覆盖这X小时，不能缩短
+
+3. **费用分配要求（重要，必须严格遵守）：**
+   - **注意：所有费用都是基于经验的估算价格，实际价格可能因时间、季节、预订渠道等因素而有所不同。**
+   
+   ${attractionPrices && attractionPrices.length > 0 
+     ? `- **景点门票价格（价格固定，不能随意提高）：**\n   * 请严格按照上方"景点门票价格参考"中的实际查询价格设置 costEst\n   * 如果景点在参考列表中标记为"免费"，costEst 必须为 0 或 null\n   * 如果景点在参考列表中有价格，costEst 必须使用该价格 × ${people} 人，不能为了提高总预算而人为增加价格\n   * 如果景点不在参考列表中，使用经验估算（门票价格通常在 50-500 元/人之间，世界级景点不超过 800 元/人）\n   * **严禁为了填满预算而提高景点门票价格，门票价格是固定的，不能随意修改**`
+     : `- **景点门票价格（价格固定，不能随意提高）：**\n   * 免费景点（如公共广场、免费公园、免费博物馆）的 costEst 必须为 null 或 0，不要分配费用\n   * 收费景点才需要分配费用，费用要符合实际情况：\n     - 普通景点：50-200 元/人\n     - 著名景点：200-500 元/人\n     - 世界级景点（如克里姆林宫、冬宫）：300-800 元/人（极少超过 800 元）\n   * **严禁为了填满预算而提高景点门票价格，门票价格是固定的，不能随意修改**`}
+   
+   - **住宿费用（价格相对固定）：**
+     * 每天晚上的住宿都要有 costEst
+     * 住宿费用要合理（经济型 200-500 元/晚，中档 500-1500 元/晚，高档 1500+ 元/晚）
+     * **注意：实际酒店价格会因预订时间、淡旺季、促销活动等因素大幅波动**
+     * **不要为了填满预算而人为提高住宿价格，应使用合理的价格范围**
+   
+   - **交通费用（价格相对固定）：**
+     * 国际航班通常 5000-15000 元/人（**实际价格波动很大，建议用户查询实时价格**）
+     * 国内航班通常 500-3000 元/人（**实际价格波动很大，建议用户查询实时价格**）
+     * 火车通常 100-1000 元/人（价格相对稳定）
+     * 市内交通通常 10-100 元/天（价格相对稳定）
+     * **不要为了填满预算而人为提高交通价格，应使用合理的价格范围**
+   
+   - **餐饮费用（价格相对灵活，但也要合理）：**
+     * 快餐：50-100 元/人
+     * 普通餐厅：100-300 元/人
+     * 高档餐厅：300+ 元/人
+     * 餐饮费用可以在合理范围内调整，但不要过度提高
+   
+   - 所有费用都是 ${people} 人的总费用（不是单人费用）
+
+4. 行程要符合以下偏好：${preferencesText}
+5. **预算控制要求（重要）：**
+   ${budget 
+     ? `- 总预算为 ¥${budget.toLocaleString()}\n   - **总预算估算（totalBudgetEstimate）必须 ≤ 预算，不能超过预算**\n   - **总预算估算可以低于预算，这是正常的，不需要为了接近预算而人为提高价格**\n   - **价格固定的项目（如景点门票、交通）不能为了提高总预算而人为增加价格**\n   - 如果计算出的总费用低于预算，这是可以接受的，不需要强制填满预算\n   - 如果计算出的总费用接近或略低于预算（如预算的 85%-100%），这是理想状态\n   - 如果计算出的总费用远低于预算（如低于预算的 70%），可以考虑适当提高餐饮或住宿档次，但不要提高价格固定的项目`
+     : '- 费用合理即可，不需要强制控制预算'}
+6. 考虑 ${people} 人出行的实际情况
+${origin ? `7. 请考虑从 ${origin} 出发的交通安排，包括往返交通方式、时间和费用` : ''}
+${destinationEnd && destinationEnd !== origin ? `8. 返程地点为 ${destinationEnd}，请合理安排返程交通` : ''}
 
 **输出格式要求（JSON）：**
 请严格按照以下 JSON 格式输出，不要包含任何其他文字说明：
@@ -47,7 +135,7 @@ export function buildItineraryPrompt(params: TripGenerationParams): string {
 \`\`\`json
 {
   "summary": "行程总体概述（100字以内）",
-  "totalBudgetEstimate": 总预算估算（数字）,
+  "totalBudgetEstimate": 总预算估算（数字，必须 ≤ 预算，可以低于预算，不能超过预算）,
   "days": [
     {
       "dayIndex": 1,
@@ -56,18 +144,60 @@ export function buildItineraryPrompt(params: TripGenerationParams): string {
       "summary": "当日概述",
       "items": [
         {
-          "timeRange": "时间段（如：09:00-12:00）",
+          "timeRange": "时间段（必须准确反映实际耗时）：\n- 国际航班9小时：07:00-16:00（不能是07:00-13:00）\n- 国际航班13小时：09:00-22:00\n- 景点3小时：14:00-17:00\n- 住宿：20:00-次日08:00（不能是14:00-20:00）",
           "type": "类型（spot/food/hotel/transport）",
           "name": "名称",
           "address": "地址",
-          "notes": "备注说明",
-          "costEst": 预估费用（数字，可选）
+          "notes": "备注说明（如果备注中提到'预计飞行时间约X小时'，timeRange必须覆盖这X小时）",
+          "costEst": 预估费用（数字，免费景点必须为null或0，住宿每天都要有费用，所有费用是${people}人总费用）
         }
       ]
     }
   ]
 }
 \`\`\`
+
+**特别提醒（必须严格遵守）：**
+- **timeRange 必须准确反映实际耗时，特别是长途交通**
+  - 如果备注说"预计飞行时间约9小时"，timeRange 必须是 07:00-16:00（9小时），不能是 07:00-13:00（只有6小时）
+  - 如果备注说"预计飞行时间约13小时"，timeRange 必须是 09:00-22:00（13小时），不能是 09:00-18:00（只有9小时）
+  - 住宿时间段必须是晚上到第二天早上，如：20:00-次日08:00，不能是 14:00-20:00
+
+- **costEst 必须准确：**
+  - 免费景点为 null 或 0，住宿每天都要有费用
+  - **景点门票价格必须使用实际查询价格或合理估算，不能为了填满预算而人为提高**
+  - **世界级景点（如克里姆林宫、冬宫）的门票价格通常在 300-800 元/人，不会超过 1000 元/人**
+  - **严禁将景点门票价格设置为 1500 元/人这样的不合理高价**
+
+- **预算控制：**
+  - **totalBudgetEstimate 必须 ≤ 预算，不能超过预算**
+  - **totalBudgetEstimate 可以低于预算，这是正常的，不需要强制填满预算**
+  - **价格固定的项目（景点门票、交通）不能为了提高总预算而人为增加价格**
+  - 如果总费用低于预算，可以考虑适当提高餐饮或住宿档次，但不要提高价格固定的项目
+
+- **所有费用都是 ${people} 人的总费用**
+
+**时间分配示例（正确）：**
+- 国际航班9小时：timeRange = "07:00-16:00"（正确，覆盖9小时）
+- 国际航班13小时：timeRange = "09:00-22:00"（正确，覆盖13小时）
+- 住宿：timeRange = "20:00-次日08:00"（正确，表示晚上入住第二天退房）
+- 景点3小时：timeRange = "14:00-17:00"（正确，覆盖3小时）
+
+**时间分配示例（错误）：**
+- 国际航班9小时：timeRange = "07:00-13:00"（错误，只有6小时，不覆盖9小时）
+- 住宿：timeRange = "14:00-20:00"（错误，这不是住宿时间段）
+
+**价格分配示例（正确）：**
+- 莫斯科克里姆林宫（2人）：costEst = 1000（500元/人 × 2人，正确）
+- 冬宫博物馆（2人）：costEst = 1200（600元/人 × 2人，正确）
+- 红场（免费）：costEst = 0 或 null（正确）
+- 总预算20000，总费用估算18000（正确，低于预算但合理）
+
+**价格分配示例（错误）：**
+- 莫斯科克里姆林宫（2人）：costEst = 3000（1500元/人 × 2人，错误，价格过高）
+- 冬宫博物馆（2人）：costEst = 3000（1500元/人 × 2人，错误，价格过高）
+- 总预算20000，总费用估算22000（错误，超过预算）
+- 为了填满预算而将景点门票从500元/人提高到1500元/人（错误，不能人为提高价格固定的项目）
 
 请开始生成行程计划。`;
 

@@ -194,7 +194,11 @@ export default function AmapView({
               console.log('地理编码成功:', marker.name, coords);
               markersToShow.push({ ...marker, lat: coords.lat, lng: coords.lng });
             } else {
-              console.warn('地理编码失败（返回 null）:', marker.name, marker.address);
+              // 静默失败，不输出警告（可能是外国城市或模糊地址，高德地图无法编码）
+              // 只记录调试信息
+              if (process.env.NODE_ENV === 'development') {
+                console.debug('地理编码失败（可能是外国城市或模糊地址）:', marker.name, marker.address);
+              }
             }
           } catch (error: any) {
             console.error('地理编码异常:', marker.name, marker.address, error.message);
