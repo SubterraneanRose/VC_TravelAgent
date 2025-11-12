@@ -1,13 +1,47 @@
 "use client";
-import { Form, Input, InputNumber, Select, DatePicker, Button, Card, Typography, Space } from 'antd';
+import { useState } from 'react';
+import { Form, Input, InputNumber, Select, DatePicker, Button, Card, Typography, Space, message } from 'antd';
+import { useRouter } from 'next/navigation';
+import dayjs, { Dayjs } from 'dayjs';
+import { supabase } from '../../lib/supabase/client';
+
 const { RangePicker } = DatePicker;
 
 export default function NewTripPage() {
   const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const onFinish = async (values: Record<string, any>) => {
-    console.log('new trip request:', values);
-    // TODO: call LLM API to generate itinerary draft
+    try {
+      setLoading(true);
+      const [startDate, endDate] = values.dateRange as [Dayjs, Dayjs];
+      const days = endDate.diff(startDate, 'day') + 1;
+
+      const { data, error } = await supabase
+        .from('trips')
+        .insert({
+          title: `${values.destination} ${days}日游`,
+          destination: values.destination,
+          start_date: startDate.format('YYYY-MM-DD'),
+          end_date: endDate.format('YYYY-MM-DD'),
+          days,
+          budget: values.budget || null,
+          preferences: values.preferences || [],
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      message.success('行程创建成功！');
+      router.push(`/trips/${data.id}`);
+    } catch (err: any) {
+      console.error('创建行程失败:', err);
+      message.error('创建行程失败: ' + (err.message || '未知错误'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -37,13 +71,14 @@ export default function NewTripPage() {
             ]} style={{ maxWidth: 480 }} />
           </Form.Item>
           <Form.Item>
-            <Button type="primary" htmlType="submit">生成行程草案</Button>
+            <Button type="primary" htmlType="submit" loading={loading}>创建行程</Button>
           </Form.Item>
         </Form>
       </Card>
     </Space>
   );
 }
+
 
 
 

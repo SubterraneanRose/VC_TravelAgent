@@ -7,9 +7,14 @@
 2. 复制环境变量模板：
    - 若存在 `.env.example`：`cp .env.example .env.local`
    - 如不存在请使用 `env.example`：`cp env.example .env.local`
-   并填写必要的 Key（不要提交到仓库）
-3. 启动开发：`npm run dev`
-4. 在浏览器访问并体验（默认 http://localhost:3000）
+3. 配置环境变量（在 `.env.local` 中填写）：
+   - `NEXT_PUBLIC_SUPABASE_URL`：Supabase 项目 URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`：Supabase anon public key
+   - `NEXT_PUBLIC_AMAP_API_KEY`：高德地图 API Key（可选）
+   - `LLM_API_KEY`：LLM API Key（可选，用于行程生成）
+4. 执行数据库迁移（参考 `supabase/README.md`）
+5. 启动开发：`npm run dev`
+6. 在浏览器访问并体验（默认 http://localhost:3000）
 
 ## Docker 运行
 1. 构建镜像：`docker build -t vc-travel-agent .`
