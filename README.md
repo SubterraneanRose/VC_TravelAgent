@@ -245,30 +245,73 @@ docker pull 你的用户名/vc-travel-agent:latest
 
 **注意**：目前镜像尚未推送到公共仓库，需要先构建。
 
-#### 方式 2: 使用导出的镜像文件（推荐，快速开始）
+#### 方式 2: 使用 GitHub Releases 预构建镜像（推荐，快速开始）
 
-如果提供了预构建的镜像文件，可以从 GitHub Releases 下载：
+**最简单的方式**：直接从 GitHub Releases 下载预构建的 Docker 镜像文件。
 
-1. **下载镜像文件**
-   - 访问 [GitHub Releases](https://github.com/SubterraneanRose/VC_TravelAgent/releases)
-   - 下载 `vc-travel-agent-latest.tar` 文件
+##### 步骤 1: 下载镜像文件
 
-2. **加载镜像**
-   ```bash
-   # 加载镜像（无需解压，直接使用 .tar 文件）
-   docker load -i vc-travel-agent-latest.tar
-   
-   # 验证镜像已加载
-   docker images | grep vc-travel-agent
-   ```
+访问项目的 GitHub Releases 页面：
+- **最新版本**：[https://github.com/SubterraneanRose/VC_TravelAgent/releases/latest](https://github.com/SubterraneanRose/VC_TravelAgent/releases/latest)
+- **所有版本**：[https://github.com/SubterraneanRose/VC_TravelAgent/releases](https://github.com/SubterraneanRose/VC_TravelAgent/releases)
 
-3. **运行容器**
-   ```bash
-   # 确保已配置 .env.local 文件（参考"快速开始"部分）
-   docker run -d -p 3000:3000 --env-file .env.local vc-travel-agent:latest
-   ```
+在 Release 页面中，找到并下载 `vc-travel-agent-latest.tar` 文件（约 48MB）。
 
-**注意**：镜像文件大小约 48MB，请确保有足够的磁盘空间。
+**或者使用命令行下载：**
+```bash
+# 下载最新版本的镜像文件
+wget https://github.com/SubterraneanRose/VC_TravelAgent/releases/latest/download/vc-travel-agent-latest.tar
+
+# 或使用 curl
+curl -L -o vc-travel-agent-latest.tar https://github.com/SubterraneanRose/VC_TravelAgent/releases/latest/download/vc-travel-agent-latest.tar
+```
+
+##### 步骤 2: 加载镜像到 Docker
+
+```bash
+# 加载镜像（无需解压，直接使用 .tar 文件）
+docker load -i vc-travel-agent-latest.tar
+
+# 验证镜像已加载
+docker images | grep vc-travel-agent
+# 应该看到类似输出：
+# vc-travel-agent   latest   xxxxxx   2 hours ago   215MB
+```
+
+##### 步骤 3: 配置环境变量
+
+确保已创建 `.env.local` 文件并配置了必需的环境变量（参考上面的"快速开始"部分）。
+
+##### 步骤 4: 运行容器
+
+```bash
+# 使用环境变量文件运行容器
+docker run -d \
+  --name vc-travel-agent \
+  -p 3000:3000 \
+  --env-file .env.local \
+  vc-travel-agent:latest
+
+# 查看容器状态
+docker ps | grep vc-travel-agent
+
+# 查看日志
+docker logs vc-travel-agent
+```
+
+##### 步骤 5: 访问应用
+
+在浏览器中打开 http://localhost:3000
+
+**优势：**
+- ✅ 无需本地构建，节省时间
+- ✅ 使用预构建的稳定版本
+- ✅ 文件大小适中（约 48MB）
+- ✅ 直接从 GitHub 下载，安全可靠
+
+**注意：**
+- 镜像文件大小约 48MB，请确保有足够的磁盘空间
+- 需要配置 `.env.local` 文件才能正常运行（参考"快速开始"部分）
 
 #### 方式 3: 本地构建镜像（推荐）
 
